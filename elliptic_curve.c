@@ -1,27 +1,27 @@
 #include <stdint.h>
 #include <stdio.h>
 
-typedef uint32_t u32;
+typedef int32_t i32;
 
 typedef struct Point {
-    u32 x;
-    u32 y;
+    i32 x;
+    i32 y;
 } point_t;
 
 
 /** Elliptic curve y = x^3 + bx + c over Z_q */
 struct Curve {
-    u32 b;
-    u32 c;
-    u32 q;
+    i32 b;
+    i32 c;
+    i32 q;
 };
 
 /** Find inverse of a number x modulo n 
     The number n must be a prime, or this function will return gibberish
 */
-u32 modulo_multiplicative_inverse(u32 x, u32 modulo) {
-    u32 res;
-    for (u32 inv = 1; inv < modulo; inv++) {
+i32 modulo_multiplicative_inverse(i32 x, i32 modulo) {
+    i32 res;
+    for (i32 inv = 1; inv < modulo; inv++) {
         res = (x * inv) % modulo;
         if (res == 1) {
             return inv;
@@ -30,8 +30,8 @@ u32 modulo_multiplicative_inverse(u32 x, u32 modulo) {
 }
 
 /** Find the negative value -x */
-unsigned int additive_inverse(u32 x, u32 modulo) {
-    u32 negative;
+unsigned int additive_inverse(i32 x, i32 modulo) {
+    i32 negative;
     // represent x as a number < modulo in case it was larger
     x = x % modulo;
 
@@ -41,26 +41,24 @@ unsigned int additive_inverse(u32 x, u32 modulo) {
 
 
 point_t ec_add(point_t *P1, point_t *P2, struct Curve *crv) {
-    u32 x1 = P1->x, x2 = P2->x, y1 = P1->y, y2 = P2->y, modulo = crv->q;
-    u32 m, x3, y3, nominator, denom, inv;
+    i32 x1 = P1->x, x2 = P2->x, y1 = P1->y, y2 = P2->y, modulo = crv->q;
+    i32 m, x3, y3, nominator, denom, inv;
     if ((x1 == x2) && (y1 == y2)) {
         // equal points, P1 = P2
-        u32 b = crv -> b;
+        i32 b = crv -> b;
         nominator = (3*x1*x1 + b) % modulo;
         denom = 2 * y1 % modulo;
     } else {
         // unequal points, P1 != P2
-        //printf("adding distinct points P1=(%u, %u) and P2=(%u, %u)\n", P1->x, P1->y, P2->x, P2->y);
         nominator = (y2 + additive_inverse(y1, modulo));
         denom = (x2 + additive_inverse(x1, modulo));
-
     }
+    // check for zero denominator, in that case the result is the point at infinity.
+    if (denom == 0) {
+        point_t inf = {-1, -1}; // let this (-1, -1) indicate point at infinity.
+        return inf;
+    };
     inv = modulo_multiplicative_inverse(denom, modulo);
-
-    //  printf("found nominator = %u\n", nominator);
-    //  printf("found denominator = %u\n", denom);
-    //  printf("inverse of denominator: %u\n", inv);
-
     m = (nominator * inv) % modulo;
     x3 = (m*m  + additive_inverse(x1, modulo) + additive_inverse(x2, modulo)) % modulo;
     y3 = (m*( x1 + additive_inverse(x3, modulo) ) + additive_inverse(y1, modulo)) % modulo;
@@ -72,13 +70,13 @@ point_t ec_add(point_t *P1, point_t *P2, struct Curve *crv) {
 /** Find an integer r such that r*P = T, if such an r exists 
     This algorithm iterates a maximum number of times provided by max_iter
 */
-u32 iterate_points_to_target(point_t *Start, point_t *Target, struct Curve *crv, u32 max_iter) {
+i32 iterate_points_to_target(point_t *Start, point_t *Target, struct Curve *crv, i32 max_iter) {
     point_t P = ec_add(Start, Start, crv);
     if (P.x == Target->x && P.y == Target->y) {
         return 1;
     }
 
-    for (u32 i=0; i < max_iter; i++) {
+    for (i32 i=0; i < max_iter; i++) {
         P = ec_add(&P, Start, crv);
 
         if (P.x == Target->x && P.y == Target->y) {
@@ -88,6 +86,17 @@ u32 iterate_points_to_target(point_t *Start, point_t *Target, struct Curve *crv,
 }
 
 
+i32 iterate_until_point_at_infinity(point_t *Start, struct Curve *crv, i32 max_iter) {
+    point_t result; 
+    result = ec_add(Start, Start, crv);
+    for (int s = 0; s < max_iter; s++) {
+        result = ec_add(Start, &result, crv);
+        if (result.y == 0) {
+            return s;
+        }
+    }
+}
+
 
 int main() {
     struct Curve crv = {2, 3, 19};
@@ -96,14 +105,19 @@ int main() {
     point_t P1 = {1, 14};
     point_t P2 = {9, 16};
     point_t P3 = ec_add(&P1, &P2, &crv);
-    printf("P3 = {%u, %u}\n", P3.x, P3.y);
+    printf("P3 = {%d, %d}\n", P3.x, P3.y);
 
 
     // c)
     point_t Start = {14, 1};
     point_t Target = {1, 14};
-    u32 r = iterate_points_to_target(&Start, &Target, &crv, 200);
-    printf("found r: %u\n", r);
+    i32 r = iterate_points_to_target(&Start, &Target, &crv, 200);
+    printf("found r: %d\n", r);
+
+    Start.x = 5; Start.y = 9;
+    i32 s = iterate_until_point_at_infinity(&Start, &crv, 200);
+    printf("found (s - 1) = %d \n", s);
+
 
     return 0;
 }
